@@ -207,9 +207,130 @@ function DetailPanel({ sensor, onStatusChange, saving }) {
   );
 }
 
+function OverviewPanel({ sensors, activeCount, inactiveCount, onSelectSensor }) {
+  const activeSensors = sensors.filter((sensor) => sensor._status).slice(0, 4);
+
+  return (
+    <ScrollView
+      style={styles.overviewScroll}
+      contentContainerStyle={styles.overviewContent}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.overviewHero}>
+        <View style={styles.overviewHeroIcon}>
+          <Ionicons name="analytics-outline" size={28} color="#FFFFFF" />
+        </View>
+        <View style={styles.overviewHeroCopy}>
+          <Text style={styles.overviewEyebrow}>MONITORAMENTO</Text>
+          <Text style={styles.overviewTitle}>Visão geral</Text>
+          <Text style={styles.overviewSubtitle}>Acompanhe seus sensores rapidamente.</Text>
+        </View>
+      </View>
+
+      <View style={styles.overviewStatsGrid}>
+        <View style={[styles.overviewStatCard, styles.overviewActiveCard]}>
+          <Ionicons name="checkmark-circle" size={25} color={COLORS.success} />
+          <Text style={styles.overviewStatNumber}>{activeCount}</Text>
+          <Text style={styles.overviewStatLabel}>sensores ativos</Text>
+        </View>
+        <View style={[styles.overviewStatCard, styles.overviewInactiveCard]}>
+          <Ionicons name="pause-circle" size={25} color={COLORS.danger} />
+          <Text style={styles.overviewStatNumber}>{inactiveCount}</Text>
+          <Text style={styles.overviewStatLabel}>sensores inativos</Text>
+        </View>
+      </View>
+
+      <View style={styles.overviewSectionHeader}>
+        <Text style={styles.overviewSectionTitle}>Ativos agora</Text>
+        <Text style={styles.overviewSectionCount}>{activeSensors.length} exibidos</Text>
+      </View>
+
+      {activeSensors.length === 0 ? (
+        <View style={styles.overviewEmpty}>
+          <Ionicons name="information-circle-outline" size={28} color={COLORS.muted} />
+          <Text style={styles.overviewEmptyText}>Nenhum sensor ativo no momento.</Text>
+        </View>
+      ) : (
+        activeSensors.map((sensor) => (
+          <Pressable
+            key={sensor._codigo}
+            onPress={() => onSelectSensor(sensor)}
+            style={({ pressed }) => [styles.overviewSensorRow, pressed && styles.pressedRow]}
+          >
+            <View style={styles.overviewSensorIcon}>
+              <Ionicons name="hardware-chip-outline" size={19} color={COLORS.primary} />
+            </View>
+            <View style={styles.overviewSensorCopy}>
+              <Text style={styles.overviewSensorCode}>{sensor._codigo}</Text>
+              <Text numberOfLines={1} style={styles.overviewSensorEnvironment}>
+                {sensor._nome} · {sensor._ambiente}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={17} color={COLORS.muted} />
+          </Pressable>
+        ))
+      )}
+    </ScrollView>
+  );
+}
+
+function MobileTabBar({ activeTab, onChange }) {
+  return (
+    <View style={styles.tabBar}>
+      <Pressable
+        onPress={() => onChange('sensors')}
+        style={({ pressed }) => [styles.tabButton, pressed && styles.pressedButton]}
+      >
+        <Ionicons
+          name={activeTab === 'sensors' ? 'hardware-chip' : 'hardware-chip-outline'}
+          size={22}
+          color={activeTab === 'sensors' ? COLORS.primary : COLORS.muted}
+        />
+        <Text style={[styles.tabLabel, activeTab === 'sensors' && styles.activeTabLabel]}>Sensores</Text>
+      </Pressable>
+      <Pressable
+        onPress={() => onChange('overview')}
+        style={({ pressed }) => [styles.tabButton, pressed && styles.pressedButton]}
+      >
+        <Ionicons
+          name={activeTab === 'overview' ? 'pie-chart' : 'pie-chart-outline'}
+          size={22}
+          color={activeTab === 'overview' ? COLORS.primary : COLORS.muted}
+        />
+        <Text style={[styles.tabLabel, activeTab === 'overview' && styles.activeTabLabel]}>Resumo</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function MobileSensorListTab({ open, count, onPress }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.sensorListTab, pressed && styles.pressedButton]}
+      accessibilityLabel={open ? 'Recolher lista de sensores' : 'Abrir lista de sensores'}
+    >
+      <View style={styles.sensorListTabIcon}>
+        <Ionicons name="list-outline" size={19} color={COLORS.primary} />
+      </View>
+      <View style={styles.sensorListTabCopy}>
+        <Text style={styles.sensorListTabTitle}>Lista de sensores</Text>
+        <Text style={styles.sensorListTabSubtitle}>{count} cadastrados</Text>
+      </View>
+      <Ionicons
+        name={open ? 'chevron-up-outline' : 'chevron-down-outline'}
+        size={21}
+        color={COLORS.primary}
+      />
+    </Pressable>
+  );
+}
+
 export default function App() {
   const { width } = useWindowDimensions();
-  const isMobile = width < 700;
+  // Até 900px usamos o fluxo de celular: uma tela por vez e lista dobrável.
+  // Isso também cobre o preview web estreito do Expo.
+  const isMobile = width < 900;
   const [sensors, setSensors] = useState([]);
   const [search, setSearch] = useState('');
   const [selectedCode, setSelectedCode] = useState(null);
@@ -217,6 +338,8 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [savingCode, setSavingCode] = useState(null);
+  const [activeTab, setActiveTab] = useState('sensors');
+  const [mobileListOpen, setMobileListOpen] = useState(true);
 
   const loadSensors = useCallback(async (isRefresh = false) => {
     try {
@@ -263,6 +386,7 @@ export default function App() {
 
   const handleSelect = async (sensor) => {
     setSelectedCode(sensor._codigo);
+    if (isMobile) setMobileListOpen(false);
     try {
       const details = await visualizarSensor(sensor._codigo);
       if (details && typeof details === 'object') {
@@ -371,8 +495,24 @@ export default function App() {
               <Text style={styles.retryText}>Tentar novamente</Text>
             </Pressable>
           </View>
-        ) : isMobile && selectedSensor ? (
+        ) : isMobile && activeTab === 'overview' ? (
+          <OverviewPanel
+            sensors={sensors}
+            activeCount={activeCount}
+            inactiveCount={inactiveCount}
+            onSelectSensor={(sensor) => {
+              setSelectedCode(sensor._codigo);
+              setActiveTab('sensors');
+              handleSelect(sensor);
+            }}
+          />
+        ) : isMobile && selectedSensor && !mobileListOpen ? (
           <View style={styles.mobileDetailsPage}>
+            <MobileSensorListTab
+              open={false}
+              count={sensors.length}
+              onPress={() => setMobileListOpen(true)}
+            />
             <Pressable
               onPress={() => setSelectedCode(null)}
               style={({ pressed }) => [styles.mobileBackButton, pressed && styles.pressedButton]}
@@ -392,6 +532,13 @@ export default function App() {
           <View style={styles.contentRow}>
             <View style={[styles.listPanel, width < 520 && styles.narrowListPanel]}>
               {listHeader}
+              {isMobile && (
+                <MobileSensorListTab
+                  open
+                  count={sensors.length}
+                  onPress={() => selectedSensor && setMobileListOpen(false)}
+                />
+              )}
               <FlatList
                 data={filteredSensors}
                 keyExtractor={(item, index) => `${item._codigo}-${index}`}
@@ -421,14 +568,26 @@ export default function App() {
                 )}
               />
             </View>
-            <View style={styles.detailPanel}>
-              <DetailPanel
-                sensor={selectedSensor}
-                saving={savingCode === selectedCode}
-                onStatusChange={handleStatusChange}
-              />
-            </View>
+            {!isMobile && (
+              <View style={styles.detailPanel}>
+                <DetailPanel
+                  sensor={selectedSensor}
+                  saving={savingCode === selectedCode}
+                  onStatusChange={handleStatusChange}
+                />
+              </View>
+            )}
           </View>
+        )}
+        {isMobile && !loading && !error && (
+          <MobileTabBar
+            activeTab={activeTab}
+            onChange={(tab) => {
+              setActiveTab(tab);
+              if (tab === 'sensors') setSelectedCode(null);
+              if (tab === 'sensors') setMobileListOpen(true);
+            }}
+          />
         )}
       </View>
     </SafeAreaView>
@@ -450,6 +609,138 @@ const styles = StyleSheet.create({
   },
   mobileBackText: { color: COLORS.primary, fontSize: 14, fontWeight: '800' },
   mobileDetailPanel: { flex: 1 },
+  sensorListTab: {
+    minHeight: 58,
+    marginBottom: 8,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: '#BFD3F8',
+    shadowColor: '#15284A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  sensorListTabIcon: {
+    width: 35,
+    height: 35,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primarySoft,
+  },
+  sensorListTabCopy: { flex: 1, marginLeft: 10 },
+  sensorListTabTitle: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
+  sensorListTabSubtitle: { color: COLORS.muted, fontSize: 11, marginTop: 2 },
+  overviewScroll: { flex: 1 },
+  overviewContent: { padding: 3, paddingBottom: 12 },
+  overviewHero: {
+    minHeight: 128,
+    padding: 17,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+  },
+  overviewHeroIcon: {
+    width: 55,
+    height: 55,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  overviewHeroCopy: { flex: 1, marginLeft: 13 },
+  overviewEyebrow: { color: '#CFE0FF', fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
+  overviewTitle: { color: '#FFFFFF', fontSize: 23, fontWeight: '800', marginTop: 3 },
+  overviewSubtitle: { color: '#E3EDFF', fontSize: 12, marginTop: 5 },
+  overviewStatsGrid: { flexDirection: 'row', gap: 9, marginTop: 11 },
+  overviewStatCard: {
+    flex: 1,
+    minHeight: 122,
+    padding: 13,
+    borderRadius: 17,
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  overviewActiveCard: { backgroundColor: COLORS.successSoft },
+  overviewInactiveCard: { backgroundColor: COLORS.dangerSoft },
+  overviewStatNumber: { color: COLORS.text, fontSize: 28, fontWeight: '800', marginTop: 7 },
+  overviewStatLabel: { color: COLORS.muted, fontSize: 11, fontWeight: '700' },
+  overviewSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 22,
+    marginBottom: 9,
+  },
+  overviewSectionTitle: { color: COLORS.text, fontSize: 16, fontWeight: '800' },
+  overviewSectionCount: { color: COLORS.muted, fontSize: 11 },
+  overviewSensorRow: {
+    minHeight: 64,
+    padding: 10,
+    borderRadius: 15,
+    marginBottom: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  overviewSensorIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primarySoft,
+  },
+  overviewSensorCopy: { flex: 1, minWidth: 0, marginHorizontal: 10 },
+  overviewSensorCode: { color: COLORS.text, fontSize: 13, fontWeight: '800' },
+  overviewSensorEnvironment: { color: COLORS.muted, fontSize: 11, marginTop: 3 },
+  overviewEmpty: {
+    minHeight: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 15,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  overviewEmptyText: { color: COLORS.muted, fontSize: 12, marginTop: 7 },
+  tabBar: {
+    height: 68,
+    marginTop: 10,
+    marginHorizontal: -2,
+    paddingHorizontal: 6,
+    paddingBottom: 5,
+    borderRadius: 19,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: '#15284A',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  tabButton: {
+    flex: 1,
+    height: 56,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  tabLabel: { color: COLORS.muted, fontSize: 11, fontWeight: '700' },
+  activeTabLabel: { color: COLORS.primary },
   listPanel: { flex: 0.9, minWidth: 0 },
   narrowListPanel: { flex: 1.05 },
   detailPanel: { flex: 1.25, minWidth: 0 },
